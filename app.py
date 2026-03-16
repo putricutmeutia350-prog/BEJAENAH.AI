@@ -4,7 +4,7 @@ import os
 import tempfile
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 
-# FIX: Alamat ImageMagick untuk Linux
+# FIX: Path untuk server Linux
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 
 st.set_page_config(page_title="BEJAENAH AI Studio", layout="wide")
@@ -15,7 +15,7 @@ def load_model():
 
 model = load_model()
 
-def process_video(input_path, style_config):
+def process_video(input_path, color, fontsize):
     video = VideoFileClip(input_path)
     audio_path = "temp_audio.mp3"
     video.audio.write_audiofile(audio_path, logger=None)
@@ -24,11 +24,11 @@ def process_video(input_path, style_config):
     
     clips = [video]
     for segment in result['segments']:
-        # Gunakan font 'DejaVu-Sans' atau kosongkan agar menggunakan font standar server
+        # Menggunakan method='caption' tanpa spesifik font agar aman dari error font server
         txt = TextClip(
             segment['text'].upper(),
-            fontsize=style_config['fontsize'],
-            color=style_config['color'],
+            fontsize=fontsize,
+            color=color,
             method='caption',
             size=(video.w * 0.8, None)
         ).set_start(segment['start']).set_end(segment['end']).set_position(('center', video.h * 0.8))
@@ -44,18 +44,23 @@ def process_video(input_path, style_config):
 
 st.title("🎬 BEJAENAH AI Content Studio")
 
+# Mengembalikan kolom pilihan fitur di sebelah kiri
+with st.sidebar:
+    st.header("Pengaturan Subtitle")
+    color_choice = st.selectbox("Warna Teks:", ["Yellow", "White", "Cyan"])
+    size_choice = st.slider("Ukuran Teks:", 20, 80, 40)
+
 uploaded_file = st.file_uploader("Upload Video (MP4)", type=["mp4"])
 
 if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
         tmp.write(uploaded_file.read())
         if st.button("Generate Subtitle"):
-            with st.spinner("Sedang memproses... Harap tunggu (5 menit)"):
+            with st.spinner("AI sedang bekerja... Proses ini butuh waktu 3-5 menit."):
                 try:
-                    # Kita pakai settingan standar agar tidak error font
-                    hasil = process_video(tmp.name, {"fontsize": 40, "color": "yellow"})
+                    hasil = process_video(tmp.name, color_choice.lower(), size_choice)
                     st.video(hasil)
                     with open(hasil, "rb") as f:
-                        st.download_button("Download Video", f, file_name="bejaenah_video.mp4")
+                        st.download_button("Download Video Hasil", f, file_name="bejaenah_video.mp4")
                 except Exception as e:
-                    st.error(f"Saran: Jika muncul error 'Security Policy', silakan klik 'Reboot App'. Pesan: {e}")
+                    st.error(f"Terjadi kendala: {e}")
