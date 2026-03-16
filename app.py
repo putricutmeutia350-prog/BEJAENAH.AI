@@ -4,7 +4,7 @@ import os
 import tempfile
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
 
-# FIX: Paksa server menggunakan path ImageMagick yang benar
+# FIX: Alamat ImageMagick untuk Linux
 os.environ["IMAGEMAGICK_BINARY"] = "/usr/bin/convert"
 
 st.set_page_config(page_title="BEJAENAH AI Studio", layout="wide")
@@ -15,23 +15,20 @@ def load_model():
 
 model = load_model()
 
-def process_video(input_path, style):
+def process_video(input_path, style_config):
     video = VideoFileClip(input_path)
-    # Ambil audio untuk Whisper
     audio_path = "temp_audio.mp3"
     video.audio.write_audiofile(audio_path, logger=None)
     
-    # Transcribe
     result = model.transcribe(audio_path)
     
     clips = [video]
     for segment in result['segments']:
-        # Buat teks subtitle sederhana
+        # Gunakan font 'DejaVu-Sans' atau kosongkan agar menggunakan font standar server
         txt = TextClip(
             segment['text'].upper(),
-            fontsize=style['fontsize'],
-            color=style['color'],
-            font='Arial-Bold',
+            fontsize=style_config['fontsize'],
+            color=style_config['color'],
             method='caption',
             size=(video.w * 0.8, None)
         ).set_start(segment['start']).set_end(segment['end']).set_position(('center', video.h * 0.8))
@@ -40,7 +37,6 @@ def process_video(input_path, style):
 
     result_video = CompositeVideoClip(clips)
     output_path = "hasil_subtitle.mp4"
-    # Gunakan preset 'ultrafast' agar server tidak overload
     result_video.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=video.fps, preset="ultrafast", logger=None)
     
     video.close()
@@ -48,26 +44,18 @@ def process_video(input_path, style):
 
 st.title("🎬 BEJAENAH AI Content Studio")
 
-col1, col2 = st.columns([1, 2])
+uploaded_file = st.file_uploader("Upload Video (MP4)", type=["mp4"])
 
-with col1:
-    style_choice = st.selectbox("Style Subtitle:", ["Viral Yellow", "Clean White"])
-    styles = {
-        "Viral Yellow": {"fontsize": 50, "color": "yellow"},
-        "Clean White": {"fontsize": 40, "color": "white"}
-    }
-
-with col2:
-    uploaded_file = st.file_uploader("Upload Video (MP4)", type=["mp4"])
-    if uploaded_file:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-            tmp.write(uploaded_file.read())
-            if st.button("Generate Subtitle"):
-                with st.spinner("Sedang memproses... Harap tunggu (5-10 menit)"):
-                    try:
-                        hasil = process_video(tmp.name, styles[style_choice])
-                        st.video(hasil)
-                        with open(hasil, "rb") as f:
-                            st.download_button("Download Video Berhasil", f, file_name="bejaenah_video.mp4")
-                    except Exception as e:
-                        st.error(f"Terjadi kesalahan teknis: {e}")
+if uploaded_file:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+        tmp.write(uploaded_file.read())
+        if st.button("Generate Subtitle"):
+            with st.spinner("Sedang memproses... Harap tunggu (5 menit)"):
+                try:
+                    # Kita pakai settingan standar agar tidak error font
+                    hasil = process_video(tmp.name, {"fontsize": 40, "color": "yellow"})
+                    st.video(hasil)
+                    with open(hasil, "rb") as f:
+                        st.download_button("Download Video", f, file_name="bejaenah_video.mp4")
+                except Exception as e:
+                    st.error(f"Saran: Jika muncul error 'Security Policy', silakan klik 'Reboot App'. Pesan: {e}")
