@@ -1,0 +1,79 @@
+import streamlit as st
+import whisper
+import os
+import requests
+import tempfile
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ImageClip, AudioFileClip
+
+# --- KONFIGURASI ---
+st.set_page_config(page_title="AI Studio Web", layout="wide")
+
+# Gaya Subtitle
+styles = {
+    "Viral Yellow": {"font": "Arial-Bold", "fontsize": 60, "color": "yellow", "stroke_color": "black", "stroke_width": 2, "method": "caption"},
+    "Netflix White": {"font": "Arial", "fontsize": 45, "color": "white", "bg_color": "black", "method": "caption"}
+}
+
+@st.cache_resource
+def load_whisper():
+    # Menggunakan model 'tiny' agar website berjalan cepat dan tidak crash
+    return whisper.load_model("tiny")
+
+def get_ai_image(prompt):
+    url = f"https://image.pollinations.ai/prompt/{prompt.replace(' ', '%20')}?width=720&height=1280&model=flux"
+    res = requests.get(url)
+    if res.status_code == 200:
+        with open("temp_img.jpg", "wb") as f:
+            f.write(res.content)
+        return "temp_img.jpg"
+    return None
+
+def process_video(input_path, style_config, is_image=False, audio_path=None):
+    model = load_whisper()
+    
+    if is_image:
+        audio = AudioFileClip(audio_path)
+        video = ImageClip(input_path).set_duration(audio.duration).set_audio(audio)
+        video = video.set_fps(24)
+        target = audio_path
+    else:
+        video = VideoFileClip(input_path)
+        target = input_path
+
+    st.info("🎙️ AI Sedang memproses teks...")
+    result = model.transcribe(target)
+    
+    clips = []
+    for s in result['segments']:
+        txt = (TextClip(s['text'].upper(), size=(video.w*0.8, None), **style_config)
+               .set_start(s['start']).set_duration(s['end']-s['start'])
+               .set_position(('center', video.h*0.8)))
+        clips.append(txt)
+
+    final = CompositeVideoClip([video] + clips)
+    out = "web_output.mp4"
+    final.write_videofile(out, fps=24, codec="libx264")
+    return out
+
+# --- UI WEBSITE ---
+st.title("🎬 AI Content Web Studio")
+mode = st.sidebar.selectbox("Pilih Fitur:", ["Subtitle Video", "Buat dari Teks"])
+style_choice = st.sidebar.selectbox("Style Subtitle:", list(styles.keys()))
+
+if mode == "Subtitle Video":
+    v_file = st.file_uploader("Upload Video (MP4)", type=["mp4"])
+    if v_file and st.button("Generate Subtitle"):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+            tmp.write(v_file.read())
+            res = process_video(tmp.name, styles[style_choice])
+            st.video(res)
+
+else:
+    prompt = st.text_input("Deskripsi Gambar AI:")
+    a_file = st.file_uploader("Upload Suara (MP3)", type=["mp3"])
+    if prompt and a_file and st.button("Generate Video AI"):
+        img = get_ai_image(prompt)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp_a:
+            tmp_a.write(a_file.read())
+            res = process_video(img, styles[style_choice], is_image=True, audio_path=tmp_a.name)
+            st.video(res)
