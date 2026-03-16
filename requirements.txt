@@ -1,7 +1,2 @@
-streamlit
+moviepy
 openai-whisper
-moviepy==1.0.3
-requests
-Pillow
-torch
-torchvision
